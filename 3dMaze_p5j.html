@@ -116,6 +116,18 @@
             width: auto; /* Let p5.js handle its size */
             height: auto;
         }
+
+        #level-indicator {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: #00ffff;
+            border-radius: 8px;
+            padding: 5px;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+            z-index: 10;
+        }
     </style>
 </head>
 <body>
@@ -129,6 +141,7 @@
             <p>生命值: <span id="player-hp">100</span>/<span id="player-max-hp">100</span></p>
             <p>魔法值: <span id="player-mp">50</span>/<span id="player-max-mp">50</span></p>
             <p>金幣: <span id="player-gold">0</span></p>
+            <p>層數: <span id="current-level">1</span>/10</p>
         </div>
         <div id="message-log" class="ui-panel">
             <h3>訊息</h3>
@@ -147,6 +160,7 @@
     </div>
 
     <div id="mini-map-container"></div>
+    <div id="level-indicator">第1層</div>
 
     <script>
         // 遊戲設定
@@ -154,6 +168,9 @@
         let FOV = Math.PI / 3; // 視角廣度 (60度)
         let playerX, playerY; // 玩家在地圖網格上的座標
         let playerDir; // 玩家面朝的方向 (0:北, 1:東, 2:南, 3:西)
+
+        const NUM_LEVELS = 10; // 總樓層數
+        let currentLevel = 0; // 目前樓層 (0 表示第一層)
 
         // 玩家狀態 (Placeholder)
         let playerStats = {
@@ -170,9 +187,15 @@
         // 2: 水 (藍色)
         // 3: 熔岩 (橙色)
         // 4: 門 (棕色)
-        // 5: 樓梯 (綠色)
+        // 5: 下樓梯 (綠色)
         // 6: 陷阱 (紫色)
-        let gameMap = [];
+        // 7: 上樓梯 (淺綠色)
+        // 8: 出口 (金色)
+        let gameMaps = []; // 所有樓層的地圖
+        let gameMap = [];  // 目前樓層的參考
+        let stairsDownPos = []; // 每層往下樓梯位置
+        let stairsUpPos = [];   // 每層往上樓梯位置
+        let exitPos = {};       // 最終出口位置
         const MAP_WIDTH = 30;
         const MAP_HEIGHT = 30;
 
@@ -195,6 +218,115 @@
 
         let isMiniMapVisible = true; // 小地圖可見性狀態
 
+        // 隨機迷宮產生工具函式
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+        }
+
+        function carveMaze(map, x, y) {
+            const dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+            shuffleArray(dirs);
+            for (const [dx, dy] of dirs) {
+                const nx = x + dx * 2;
+                const ny = y + dy * 2;
+                if (nx > 0 && nx < MAP_WIDTH - 1 && ny > 0 && ny < MAP_HEIGHT - 1 && map[ny][nx] === 1) {
+                    map[y + dy][x + dx] = 0;
+                    map[ny][nx] = 0;
+                    carveMaze(map, nx, ny);
+                }
+            }
+        }
+
+        function placeSpecialTile(map, type) {
+            let placed = false;
+            while (!placed) {
+                const x = Math.floor(Math.random() * (MAP_WIDTH - 2)) + 1;
+                const y = Math.floor(Math.random() * (MAP_HEIGHT - 2)) + 1;
+                if (map[y][x] === 0) {
+                    map[y][x] = type;
+                    placed = true;
+                }
+            }
+        }
+
+        function generateRandomMaze() {
+            let map = [];
+            // 初始全部設為牆壁
+            for (let y = 0; y < MAP_HEIGHT; y++) {
+                map[y] = new Array(MAP_WIDTH).fill(1);
+            }
+
+            // 以 (1,1) 為起點雕刻迷宮
+            map[1][1] = 0;
+            carveMaze(map, 1, 1);
+
+            // 確保出口
+            map[MAP_HEIGHT - 2][MAP_WIDTH - 2] = 0;
+
+            return map;
+        }
+
+        // 產生所有樓層的地圖，並連接樓梯
+        function generateAllLevels() {
+            gameMaps = [];
+            stairsDownPos = [];
+            stairsUpPos = [];
+            let entranceX = 1;
+            let entranceY = 1;
+
+            for (let lvl = 0; lvl < NUM_LEVELS; lvl++) {
+                let map = generateRandomMaze();
+
+                // 標記上一層連接點為上樓梯（第一層除外）
+                if (lvl > 0) {
+                    map[entranceY][entranceX] = 7; // 上樓梯
+                    stairsUpPos[lvl] = { x: entranceX, y: entranceY };
+                } else {
+                    stairsUpPos[lvl] = null;
+                }
+
+                let downX, downY;
+                if (lvl < NUM_LEVELS - 1) {
+                    // 選擇下樓梯位置
+                    do {
+                        downX = Math.floor(Math.random() * (MAP_WIDTH - 2)) + 1;
+                        downY = Math.floor(Math.random() * (MAP_HEIGHT - 2)) + 1;
+                    } while (map[downY][downX] !== 0 || (downX === entranceX && downY === entranceY));
+                    map[downY][downX] = 5; // 下樓梯
+                    stairsDownPos[lvl] = { x: downX, y: downY };
+                    // 下一層的入口與此相同
+                    entranceX = downX;
+                    entranceY = downY;
+                } else {
+                    // 最後一層放置出口
+                    let exitX, exitY;
+                    do {
+                        exitX = Math.floor(Math.random() * (MAP_WIDTH - 2)) + 1;
+                        exitY = Math.floor(Math.random() * (MAP_HEIGHT - 2)) + 1;
+                    } while (map[exitY][exitX] !== 0 || (exitX === entranceX && exitY === entranceY));
+                    map[exitY][exitX] = 8; // 出口
+                    exitPos = { x: exitX, y: exitY };
+                }
+
+                // 隨機放置特殊方塊
+                placeSpecialTile(map, 2); // 水
+                placeSpecialTile(map, 3); // 熔岩
+                placeSpecialTile(map, 4); // 門
+                placeSpecialTile(map, 6); // 陷阱
+
+                gameMaps[lvl] = map;
+            }
+
+            // 初始載入第一層
+            currentLevel = 0;
+            gameMap = gameMaps[0];
+            playerX = 1;
+            playerY = 1;
+        }
+
         function setup() {
             // 計算主遊戲畫布的尺寸
             let container = document.getElementById('main-game-canvas-container');
@@ -212,55 +344,16 @@
                 water: color(50, 100, 200),  // 藍色
                 lava: color(255, 100, 0),    // 橙色
                 door: color(139, 69, 19),    // 棕色
-                stairs: color(0, 150, 0),    // 綠色
+                stairsDown: color(0, 150, 0), // 下樓梯綠色
+                stairsUp: color(0, 200, 0),   // 上樓梯淺綠
+                exit: color(255, 215, 0),     // 出口金色
                 trap: color(80, 0, 80),      // 紫色
                 ceiling: color(80)           // 天花板顏色 (深灰色)
             };
             fogColor = color(0, 0, 0); // 黑色迷霧
 
-            // --- 地圖生成邏輯修正 ---
-            // 1. 初始化所有格子為地板
-            for (let y = 0; y < MAP_HEIGHT; y++) {
-                gameMap[y] = new Array(MAP_WIDTH).fill(0);
-            }
-
-            // 2. 添加邊界牆壁
-            for (let y = 0; y < MAP_HEIGHT; y++) {
-                gameMap[y][0] = 1;
-                gameMap[y][MAP_WIDTH - 1] = 1;
-            }
-            for (let x = 0; x < MAP_WIDTH; x++) {
-                gameMap[0][x] = 1;
-                gameMap[MAP_HEIGHT - 1][x] = 1;
-            }
-
-            // 3. 添加網格牆壁 (這可能會阻擋一些路徑，但我們會清理)
-            for (let y = 0; y < MAP_HEIGHT; y++) {
-                for (let x = 0; x < MAP_WIDTH; x++) {
-                    if (x % 5 === 0 && y % 5 === 0 && x > 0 && y > 0 && x < MAP_WIDTH - 1 && y < MAP_HEIGHT - 1) {
-                        gameMap[y][x] = 1;
-                    }
-                }
-            }
-
-            // 4. 清理一條主路徑，確保玩家可以移動
-            for (let i = 1; i < MAP_WIDTH - 1; i++) {
-                gameMap[1][i] = 0; // 靠近頂部的水平路徑
-                gameMap[i][1] = 0; // 靠近左側的垂直路徑
-            }
-            for (let i = 2; i < MAP_WIDTH - 2; i++) {
-                gameMap[i][i] = 0; // 對角線路徑
-                gameMap[i][i+1] = 0; // 加寬路徑
-            }
-            gameMap[MAP_HEIGHT-2][MAP_WIDTH-2] = 0; // 確保結束點清晰
-
-            // 5. 精確放置特殊元素，確保它們不會被路徑覆蓋
-            // 選擇一些不會被預設路徑直接覆蓋的位置
-            gameMap[3][5] = 2; // 水
-            gameMap[5][7] = 3; // 熔岩
-            gameMap[10][15] = 4; // 門
-            gameMap[12][17] = 5; // 樓梯
-            gameMap[14][19] = 6; // 陷阱
+            // 產生所有樓層的迷宮
+            generateAllLevels();
 
             // 設置玩家初始位置和方向
             playerX = 1;
@@ -272,6 +365,8 @@
 
             // 更新UI顯示
             updateUI();
+            document.getElementById('level-indicator').innerText = `第${currentLevel + 1}層`;
+            addMessage(`你來到第${currentLevel + 1}層`);
 
             // 啟動小地圖 (確保在地圖初始化後)
             new p5(miniMapSketch, 'mini-map-container');
@@ -367,12 +462,12 @@
                             box(TILE_SIZE, TILE_SIZE, TILE_SIZE); // 門暫時也顯示為方塊
                             pop();
                             break;
-                        case 5: // 樓梯
-                            currentColor = colors.stairs;
+                        case 5: // 下樓梯
+                            currentColor = colors.stairsDown;
                             fill(lerpColor(currentColor, fogColor, fogAmount));
                             push();
-                            translate(0, TILE_SIZE / 2, 0); // 樓梯底部在 Y=0
-                            box(TILE_SIZE, TILE_SIZE, TILE_SIZE); // 樓梯暫時也顯示為方塊
+                            translate(0, TILE_SIZE / 2, 0);
+                            box(TILE_SIZE, TILE_SIZE, TILE_SIZE);
                             pop();
                             break;
                         case 6: // 陷阱
@@ -384,6 +479,22 @@
                             translate(0, 1, 0); // 陷阱在地板上，稍微高於 Y=0
                             rotateX(HALF_PI);
                             plane(TILE_SIZE * 0.8, TILE_SIZE * 0.8); // 稍微小一點的平面表示陷阱
+                            pop();
+                            break;
+                        case 7: // 上樓梯
+                            currentColor = colors.stairsUp;
+                            fill(lerpColor(currentColor, fogColor, fogAmount));
+                            push();
+                            translate(0, TILE_SIZE / 2, 0);
+                            box(TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                            pop();
+                            break;
+                        case 8: // 出口
+                            currentColor = colors.exit;
+                            fill(lerpColor(currentColor, fogColor, fogAmount));
+                            push();
+                            translate(0, TILE_SIZE / 2, 0);
+                            box(TILE_SIZE, TILE_SIZE, TILE_SIZE);
                             pop();
                             break;
                     }
@@ -438,13 +549,41 @@
                     playerY = newPlayerY;
                     addMessage(`移動到 (${playerX}, ${playerY})`);
 
-                    // 針對特殊方塊添加特定訊息
+                    // 針對特殊方塊添加特定訊息及行為
                     switch(targetTileType) {
-                        case 2: addMessage("你踏入了水中！"); break;
-                        case 3: addMessage("你感覺到一股熱浪，這是熔岩！"); break;
-                        case 4: addMessage("你看到了一扇門。"); break;
-                        case 5: addMessage("這裡有樓梯。"); break;
-                        case 6: addMessage("小心！你踩到了陷阱！"); break;
+                        case 2:
+                            addMessage("你踏入了水中！");
+                            break;
+                        case 3:
+                            addMessage("你感覺到一股熱浪，這是熔岩！");
+                            break;
+                        case 4:
+                            addMessage("你看到了一扇門。");
+                            break;
+                        case 5:
+                            addMessage("你發現通往下一層的樓梯。");
+                            changeLevel(currentLevel + 1);
+                            break;
+                        case 6:
+                            addMessage("小心！你踩到了陷阱！");
+                            break;
+                        case 7:
+                            addMessage("你看見了回到上一層的樓梯。");
+                            changeLevel(currentLevel - 1);
+                            break;
+                        case 8:
+                            // 最終出口
+                            addMessage("你找到了出口！");
+                            if (confirm("恭喜過關！要再玩一次嗎？")) {
+                                generateAllLevels();
+                                updateUI();
+                                document.getElementById('level-indicator').innerText = `第${currentLevel + 1}層`;
+                                addMessage(`你來到第${currentLevel + 1}層`);
+                            } else {
+                                addMessage("遊戲結束。");
+                                noLoop();
+                            }
+                            break;
                     }
                 } else {
                     addMessage("你撞到了牆壁！");
@@ -468,6 +607,7 @@
             document.getElementById('player-mp').innerText = playerStats.mp;
             document.getElementById('player-max-mp').innerText = playerStats.maxMp;
             document.getElementById('player-gold').innerText = playerStats.gold;
+            document.getElementById('current-level').innerText = currentLevel + 1;
         }
 
         // --- 訊息日誌函數 ---
@@ -478,6 +618,22 @@
             messagesDiv.appendChild(p);
             // 保持滾動條在最底部
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // 樓層切換
+        function changeLevel(newLevel) {
+            if (newLevel < 0 || newLevel >= NUM_LEVELS) {
+                return;
+            }
+            currentLevel = newLevel;
+            gameMap = gameMaps[currentLevel];
+            if (stairsUpPos[currentLevel]) {
+                playerX = stairsUpPos[currentLevel].x;
+                playerY = stairsUpPos[currentLevel].y;
+            }
+            updateUI();
+            document.getElementById('level-indicator').innerText = `第${currentLevel + 1}層`;
+            addMessage(`你來到第${currentLevel + 1}層`);
         }
 
 
@@ -504,8 +660,10 @@
                             case 2: c = colors.water; break;
                             case 3: c = colors.lava; break;
                             case 4: c = colors.door; break;
-                            case 5: c = colors.stairs; break;
+                            case 5: c = colors.stairsDown; break;
                             case 6: c = colors.trap; break;
+                            case 7: c = colors.stairsUp; break;
+                            case 8: c = colors.exit; break;
                             default: c = p.color(0); // 預設黑色
                         }
                         p.fill(c);

@@ -572,14 +572,22 @@
                             break;
                         case 5:
                             addMessage("你發現通往下一層的樓梯。");
-                            changeLevel(currentLevel + 1);
+                            if (confirm("要下樓嗎？")) {
+                                changeLevel(currentLevel + 1);
+                            } else {
+                                addMessage("你決定留在這一層。");
+                            }
                             break;
                         case 6:
                             addMessage("小心！你踩到了陷阱！");
                             break;
                         case 7:
                             addMessage("你看見了回到上一層的樓梯。");
-                            changeLevel(currentLevel - 1);
+                            if (confirm("要上樓嗎？")) {
+                                changeLevel(currentLevel - 1);
+                            } else {
+                                addMessage("你決定留在這一層。");
+                            }
                             break;
                         case 8:
                             // 最終出口

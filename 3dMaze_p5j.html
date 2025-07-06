@@ -218,6 +218,13 @@
 
         let isMiniMapVisible = true; // 小地圖可見性狀態
 
+        // 牆壁貼圖
+        let wallTexture;
+
+        function preload() {
+            wallTexture = loadImage('wall.png');
+        }
+
         // 隨機迷宮產生工具函式
         function shuffleArray(arr) {
             for (let i = arr.length - 1; i > 0; i--) {
@@ -336,6 +343,7 @@
             // 創建畫布並啟用 WEBGL 模式
             let mainCanvas = createCanvas(canvasWidth, canvasHeight, WEBGL);
             mainCanvas.parent('main-game-canvas-container'); // 附加到指定的 div
+            textureMode(NORMAL); // 使用預設紋理座標模式
 
             // 初始化顏色
             colors = {
@@ -421,12 +429,14 @@
                             pop();
                             break;
                         case 1: // 牆壁
-                            currentColor = colors.wall;
-                            fill(lerpColor(currentColor, fogColor, fogAmount));
                             push();
                             // box() 預設中心在 Y=0。為了讓牆壁底部在 Y=0，需要將其中心上移 TILE_SIZE/2
                             translate(0, TILE_SIZE / 2, 0);
+                            let fogged = lerpColor(color(255), fogColor, fogAmount);
+                            tint(fogged);
+                            texture(wallTexture);
                             box(TILE_SIZE, TILE_SIZE, TILE_SIZE); // 繪製牆壁
+                            noTint();
                             pop();
                             break;
                         case 2: // 水
@@ -562,14 +572,22 @@
                             break;
                         case 5:
                             addMessage("你發現通往下一層的樓梯。");
-                            changeLevel(currentLevel + 1);
+                            if (confirm("要下樓嗎？")) {
+                                changeLevel(currentLevel + 1);
+                            } else {
+                                addMessage("你決定留在這一層。");
+                            }
                             break;
                         case 6:
                             addMessage("小心！你踩到了陷阱！");
                             break;
                         case 7:
                             addMessage("你看見了回到上一層的樓梯。");
-                            changeLevel(currentLevel - 1);
+                            if (confirm("要上樓嗎？")) {
+                                changeLevel(currentLevel - 1);
+                            } else {
+                                addMessage("你決定留在這一層。");
+                            }
                             break;
                         case 8:
                             // 最終出口

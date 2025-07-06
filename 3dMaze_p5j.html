@@ -195,6 +195,61 @@
 
         let isMiniMapVisible = true; // 小地圖可見性狀態
 
+        // 隨機迷宮產生工具函式
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+        }
+
+        function carveMaze(x, y) {
+            const dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+            shuffleArray(dirs);
+            for (const [dx, dy] of dirs) {
+                const nx = x + dx * 2;
+                const ny = y + dy * 2;
+                if (nx > 0 && nx < MAP_WIDTH - 1 && ny > 0 && ny < MAP_HEIGHT - 1 && gameMap[ny][nx] === 1) {
+                    gameMap[y + dy][x + dx] = 0;
+                    gameMap[ny][nx] = 0;
+                    carveMaze(nx, ny);
+                }
+            }
+        }
+
+        function placeSpecialTile(type) {
+            let placed = false;
+            while (!placed) {
+                const x = Math.floor(Math.random() * (MAP_WIDTH - 2)) + 1;
+                const y = Math.floor(Math.random() * (MAP_HEIGHT - 2)) + 1;
+                if (gameMap[y][x] === 0) {
+                    gameMap[y][x] = type;
+                    placed = true;
+                }
+            }
+        }
+
+        function generateRandomMaze() {
+            // 初始全部設為牆壁
+            for (let y = 0; y < MAP_HEIGHT; y++) {
+                gameMap[y] = new Array(MAP_WIDTH).fill(1);
+            }
+
+            // 以 (1,1) 為起點雕刻迷宮
+            gameMap[1][1] = 0;
+            carveMaze(1, 1);
+
+            // 確保出口
+            gameMap[MAP_HEIGHT - 2][MAP_WIDTH - 2] = 0;
+
+            // 放置特殊方塊
+            placeSpecialTile(2); // 水
+            placeSpecialTile(3); // 熔岩
+            placeSpecialTile(4); // 門
+            placeSpecialTile(5); // 樓梯
+            placeSpecialTile(6); // 陷阱
+        }
+
         function setup() {
             // 計算主遊戲畫布的尺寸
             let container = document.getElementById('main-game-canvas-container');
@@ -218,49 +273,8 @@
             };
             fogColor = color(0, 0, 0); // 黑色迷霧
 
-            // --- 地圖生成邏輯修正 ---
-            // 1. 初始化所有格子為地板
-            for (let y = 0; y < MAP_HEIGHT; y++) {
-                gameMap[y] = new Array(MAP_WIDTH).fill(0);
-            }
-
-            // 2. 添加邊界牆壁
-            for (let y = 0; y < MAP_HEIGHT; y++) {
-                gameMap[y][0] = 1;
-                gameMap[y][MAP_WIDTH - 1] = 1;
-            }
-            for (let x = 0; x < MAP_WIDTH; x++) {
-                gameMap[0][x] = 1;
-                gameMap[MAP_HEIGHT - 1][x] = 1;
-            }
-
-            // 3. 添加網格牆壁 (這可能會阻擋一些路徑，但我們會清理)
-            for (let y = 0; y < MAP_HEIGHT; y++) {
-                for (let x = 0; x < MAP_WIDTH; x++) {
-                    if (x % 5 === 0 && y % 5 === 0 && x > 0 && y > 0 && x < MAP_WIDTH - 1 && y < MAP_HEIGHT - 1) {
-                        gameMap[y][x] = 1;
-                    }
-                }
-            }
-
-            // 4. 清理一條主路徑，確保玩家可以移動
-            for (let i = 1; i < MAP_WIDTH - 1; i++) {
-                gameMap[1][i] = 0; // 靠近頂部的水平路徑
-                gameMap[i][1] = 0; // 靠近左側的垂直路徑
-            }
-            for (let i = 2; i < MAP_WIDTH - 2; i++) {
-                gameMap[i][i] = 0; // 對角線路徑
-                gameMap[i][i+1] = 0; // 加寬路徑
-            }
-            gameMap[MAP_HEIGHT-2][MAP_WIDTH-2] = 0; // 確保結束點清晰
-
-            // 5. 精確放置特殊元素，確保它們不會被路徑覆蓋
-            // 選擇一些不會被預設路徑直接覆蓋的位置
-            gameMap[3][5] = 2; // 水
-            gameMap[5][7] = 3; // 熔岩
-            gameMap[10][15] = 4; // 門
-            gameMap[12][17] = 5; // 樓梯
-            gameMap[14][19] = 6; // 陷阱
+            // 產生隨機迷宮並放置特殊方塊
+            generateRandomMaze();
 
             // 設置玩家初始位置和方向
             playerX = 1;

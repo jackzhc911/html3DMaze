@@ -218,11 +218,13 @@
 
         let isMiniMapVisible = true; // 小地圖可見性狀態
 
-        // 牆壁貼圖
-        let wallTexture;
+        // 貼圖變數
+        let wallTexture;    // 牆壁貼圖
+        let stairsUpTexture; // 上樓梯貼圖
 
         function preload() {
             wallTexture = loadImage('wall.png');
+            stairsUpTexture = loadImage('upstairs.png');
         }
 
         // 隨機迷宮產生工具函式
@@ -492,11 +494,15 @@
                             pop();
                             break;
                         case 7: // 上樓梯
-                            currentColor = colors.stairsUp;
-                            fill(lerpColor(currentColor, fogColor, fogAmount));
+                            //currentColor = colors.stairsUp;
+                            //fill(lerpColor(currentColor, fogColor, fogAmount));
                             push();
                             translate(0, TILE_SIZE / 2, 0);
+                            let foggedUp = lerpColor(color(255), fogColor, fogAmount);
+                            tint(foggedUp);
+                            texture(stairsUpTexture);
                             box(TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                            noTint();
                             pop();
                             break;
                         case 8: // 出口
